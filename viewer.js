@@ -211,7 +211,6 @@ const PDFViewerApplication = {
   _wheelUnusedFactor: 1,
   _touchUnusedTicks: 0,
   _touchUnusedFactor: 1,
-  _PDFBug: null,
   _hasAnnotationEditors: false,
   _title: document.title,
   _printAnnotationStoragePromise: null,
@@ -239,12 +238,7 @@ const PDFViewerApplication = {
     this._initializedCapability.resolve();
   },
   async _initializeOptions() {
-    if (_app_options.AppOptions.get("disablePreferences")) {
-      if (_app_options.AppOptions.get("pdfBugEnabled")) {
-        await this._parseHashParams();
-      }
-      return;
-    }
+
     if (_app_options.AppOptions._hasUserOptions()) {
       console.warn("_initializeOptions: The Preferences may override manually set AppOptions; " + 'please use the "disablePreferences"-option in order to prevent that.');
     }
@@ -252,9 +246,6 @@ const PDFViewerApplication = {
       _app_options.AppOptions.setAll(await this.preferences.getAll());
     } catch (reason) {
       console.error(`_initializeOptions: "${reason.message}".`);
-    }
-    if (_app_options.AppOptions.get("pdfBugEnabled")) {
-      await this._parseHashParams();
     }
   },
   async _parseHashParams() {
@@ -301,28 +292,10 @@ const PDFViewerApplication = {
         case "shadow":
         case "hover":
           viewerContainer.classList.add(`textLayer-${params.get("textlayer")}`);
-          try {
-            await loadPDFBug(this);
-            this._PDFBug.loadCSS();
-          } catch (ex) {
-            console.error(`_parseHashParams: "${ex.message}".`);
-          }
           break;
       }
     }
-    if (params.has("pdfbug")) {
-      _app_options.AppOptions.set("pdfBug", true);
-      _app_options.AppOptions.set("fontExtraProperties", true);
-      const enabled = params.get("pdfbug").split(",");
-      try {
-        await loadPDFBug(this);
-        this._PDFBug.init({
-          OPS: _pdfjsLib.OPS
-        }, mainContainer, enabled);
-      } catch (ex) {
-        console.error(`_parseHashParams: "${ex.message}".`);
-      }
-    }
+    
     if (params.has("locale")) {
       _app_options.AppOptions.set("locale", params.get("locale"));
     }
@@ -752,7 +725,6 @@ const PDFViewerApplication = {
     this.findBar?.reset();
     this.toolbar?.reset();
     this.secondaryToolbar?.reset();
-    this._PDFBug?.cleanup();
     await Promise.all(promises);
   },
   async open(args) {
@@ -1437,11 +1409,6 @@ const PDFViewerApplication = {
     eventBus._on("findfromurlhash", webViewerFindFromUrlHash);
     eventBus._on("updatefindmatchescount", webViewerUpdateFindMatchesCount);
     eventBus._on("updatefindcontrolstate", webViewerUpdateFindControlState);
-    if (_app_options.AppOptions.get("pdfBug")) {
-      _boundEvents.reportPageStatsPDFBug = reportPageStatsPDFBug;
-      eventBus._on("pagerendered", _boundEvents.reportPageStatsPDFBug);
-      eventBus._on("pagechanging", _boundEvents.reportPageStatsPDFBug);
-    }
     eventBus._on("fileinputchange", webViewerFileInputChange);
     eventBus._on("openfile", webViewerOpenFile);
   },
@@ -1556,11 +1523,6 @@ const PDFViewerApplication = {
     eventBus._off("findfromurlhash", webViewerFindFromUrlHash);
     eventBus._off("updatefindmatchescount", webViewerUpdateFindMatchesCount);
     eventBus._off("updatefindcontrolstate", webViewerUpdateFindControlState);
-    if (_boundEvents.reportPageStatsPDFBug) {
-      eventBus._off("pagerendered", _boundEvents.reportPageStatsPDFBug);
-      eventBus._off("pagechanging", _boundEvents.reportPageStatsPDFBug);
-      _boundEvents.reportPageStatsPDFBug = null;
-    }
     eventBus._off("fileinputchange", webViewerFileInputChange);
     eventBus._off("openfile", webViewerOpenFile);
     _boundEvents.beforePrint = null;
@@ -1667,24 +1629,8 @@ async function loadFakeWorker() {
   _pdfjsLib.GlobalWorkerOptions.workerSrc ||= _app_options.AppOptions.get("workerSrc");
   await (0, _pdfjsLib.loadScript)(_pdfjsLib.PDFWorker.workerSrc);
 }
-async function loadPDFBug(self) {
-  const {
-    debuggerScriptPath
-  } = self.appConfig;
-  const {
-    PDFBug
-  } = await import(debuggerScriptPath);
-  self._PDFBug = PDFBug;
-}
-function reportPageStatsPDFBug({
-  pageNumber
-}) {
-  if (!globalThis.Stats?.enabled) {
-    return;
-  }
-  const pageView = PDFViewerApplication.pdfViewer.getPageView(pageNumber - 1);
-  globalThis.Stats.add(pageNumber, pageView?.pdfPage?.stats);
-}
+
+
 function webViewerPageRender({
   pageNumber
 }) {
@@ -2984,7 +2930,7 @@ let pdfjsLib;
 if (typeof window !== "undefined" && window["pdfjs-dist/build/pdf"]) {
   pdfjsLib = window["pdfjs-dist/build/pdf"];
 } else {
-  pdfjsLib = require("../build/pdf.js");
+  pdfjsLib = require("build/pdf.js");
 }
 module.exports = pdfjsLib;
 
@@ -3096,10 +3042,6 @@ const defaultOptions = {
     value: "CanvasText",
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE
   },
-  pdfBugEnabled: {
-    value: false,
-    kind: OptionKind.VIEWER + OptionKind.PREFERENCE
-  },
   printResolution: {
     value: 150,
     kind: OptionKind.VIEWER
@@ -3137,7 +3079,7 @@ const defaultOptions = {
     kind: OptionKind.API
   },
   cMapUrl: {
-    value: "../web/cmaps/",
+    value: "web/cmaps/",
     kind: OptionKind.API
   },
   disableAutoFetch: {
@@ -3180,12 +3122,8 @@ const defaultOptions = {
     value: -1,
     kind: OptionKind.API
   },
-  pdfBug: {
-    value: false,
-    kind: OptionKind.API
-  },
   standardFontDataUrl: {
-    value: "../web/standard_fonts/",
+    value: "web/standard_fonts/",
     kind: OptionKind.API
   },
   verbosity: {
@@ -3197,7 +3135,7 @@ const defaultOptions = {
     kind: OptionKind.WORKER
   },
   workerSrc: {
-    value: "../build/pdf.worker.js",
+    value: "build/pdf.worker.js",
     kind: OptionKind.WORKER
   }
 };
@@ -3215,7 +3153,7 @@ const defaultOptions = {
     kind: OptionKind.VIEWER
   };
   defaultOptions.sandboxBundleSrc = {
-    value: "../build/pdf.sandbox.js",
+    value: "build/pdf.sandbox.js",
     kind: OptionKind.VIEWER
   };
 }
@@ -12266,7 +12204,6 @@ class BasePreferences {
     "forcePageColors": false,
     "pageColorsBackground": "Canvas",
     "pageColorsForeground": "CanvasText",
-    "pdfBugEnabled": false,
     "sidebarViewOnLoad": -1,
     "scrollModeOnLoad": -1,
     "spreadModeOnLoad": -1,
@@ -13744,8 +13681,7 @@ function getViewerConfiguration() {
       editorInkOpacity: document.getElementById("editorInkOpacity")
     },
     printContainer: document.getElementById("printContainer"),
-    openFileInput: document.getElementById("fileInput"),
-    debuggerScriptPath: "./debugger.js"
+    openFileInput: document.getElementById("fileInput")
   };
 }
 function webViewerLoad() {
